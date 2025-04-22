@@ -1,0 +1,32 @@
+#!/bin/bash
+sudo apt update -y && sudo apt upgrade -y
+sudo apt install -y openjdk-17-jre-headless maven git
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-7.x.list
+sudo apt update -y
+sudo apt install filebeat -y
+cd /home/ubuntu
+git clone https://github.com/sarangsurve/Boardgame.git
+cd Boardgame
+mvn clean package
+cd target/
+nohup java -jar *.jar > app.log 2>&1 &
+# http://<public-ip>:8080
+sudo sed -i 's/^output.elasticsearch:/#output.elasticsearch:/' /etc/filebeat/filebeat.yml
+sudo sed -i 's/^[[:space:]]*hosts: \["localhost:9200"\]/  #hosts: ["localhost:9200"]/' /etc/filebeat/filebeat.yml
+
+cat <<EOF | sudo tee -a /etc/filebeat/filebeat.yml > /dev/null
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /home/ubuntu/Boardgame/target/app.log
+output.logstash:
+  hosts: ["${ELK_INSTANCE_IP}:5044"]
+#output.elasticsearch:
+#  hosts: ["${ELK_INSTANCE_IP}:9200"]
+EOF
+sudo systemctl start filebeat --now
+sudo systemctl enable filebeat --now
+# sudo systemctl status filebeat
+# sudo filebeat test output
